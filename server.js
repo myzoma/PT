@@ -63,59 +63,33 @@ app.get('/', (req, res) => {
   });
 });
 
-// نقطة exchangeInfo
+// نقطة exchangeInfo محسنة
 app.get('/api/binance/exchange-info', async (req, res) => {
   try {
-    const data = await tryBinanceServers('exchangeInfo');
-    res.json(data);
-  } catch (error) {
-    console.error('Error fetching exchange info:', error);
-    res.status(500).json({ error: 'Failed to fetch exchange info' });
-  }
-});
-
-// نقطة spot-prices
-app.get('/api/binance/spot-prices', async (req, res) => {
-  try {
-    if (Date.now() - cacheTimestamp < CACHE_EXPIRY && priceCache.spotPrices) {
-      return res.json({
-        source: 'cache',
-        data: priceCache.spotPrices,
-        timestamp: cacheTimestamp
-      });
+    console.log('Attempting to fetch exchange info from Binance');
+    const response = await axios.get('https://api.binance.com/api/v3/exchangeInfo', {
+      timeout: 5000,
+      headers: {
+        'Accept-Encoding': 'gzip',
+        'User-Agent': 'Your-App-Name'
+      }
+    });
+    
+    if (!response.data.symbols) {
+      throw new Error('Invalid response structure from Binance');
     }
-
-    try {
-      const data = await tryBinanceServers('ticker/price');
-      priceCache.spotPrices = data;
-      cacheTimestamp = Date.now();
-      return res.json({
-        source: 'binance',
-        data: data,
-        timestamp: cacheTimestamp
-      });
-    } catch (binanceError) {
-      console.log('Binance failed, using fallback...');
-      const fallbackData = await getFallbackData('exchanges/binance/tickers');
-      
-      const formattedData = fallbackData.tickers.map(ticker => ({
-        symbol: ticker.base + ticker.target,
-        price: ticker.last
-      }));
-      
-      priceCache.spotPrices = formattedData;
-      cacheTimestamp = Date.now();
-      return res.json({
-        source: 'coingecko-fallback',
-        data: formattedData,
-        timestamp: cacheTimestamp
-      });
-    }
+    
+    console.log('Successfully fetched exchange info');
+    res.json({
+      success: true,
+      symbols: response.data.symbols
+    });
   } catch (error) {
-    console.error('Final error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch prices from all sources',
-      details: error.message 
+    console.error('Error in exchange-info endpoint:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch exchange info',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
